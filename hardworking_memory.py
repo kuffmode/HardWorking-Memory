@@ -210,6 +210,7 @@ def experiment_generator(*,
                          frequency_mat: np.ndarray,
                          trial_generator: Callable,
                          trial_generator_kw: Optional[Dict],
+                         is_wm: bool = False,
                          is_match: bool = True,
                          is_3d: bool = True):
     """
@@ -226,6 +227,12 @@ def experiment_generator(*,
 
         trial_generator_kw (Optional[Dict]):
             Parameters for the trial generator function and the functions it's using.
+
+        is_wm (bool):
+            Informs the network with task condition. Can be dismissed but good if the network is required to
+            perform both tasks. Make sure your condition is indeed the one you specify here!
+            The cue is a step function with the same length as the response duration (literally the same signal
+            but mirrored in time so it appears during the source signal) with 1 indicating wm and -1 for recall.
 
         is_match (bool):
             Creates a match response. Make sure it is indeed a match experiment!
@@ -245,7 +252,7 @@ def experiment_generator(*,
     signals = []
     cues = []
     responses = []
-
+    wm_cue = []
     for f_list in frequency_mat:
 
         # adjusting the arguments for each trial, if there's a "frequencies" argument in the source and target kw of
@@ -259,12 +266,15 @@ def experiment_generator(*,
 
         trials.append(trial_generator(**trial_generator_kw))
 
+
+
     # from a list of lists to a numpy array.
     for trial in trials:
         signals.extend(trial[0])
         cues.extend(trial[1])  # TODO: what if there's no cue
         responses.extend(trial[1]) if is_match else responses.extend(trial[1] * -1)
-    experiment = np.array((signals, cues, responses))
+        wm_cue.extend(trial[1][::-1]) if is_wm else wm_cue.extend(trial[1][::-1]*-1)
+    experiment = np.array((signals, cues, responses, wm_cue))
 
     if is_3d:
         trial_duration = len(trials[0][0])
@@ -272,6 +282,7 @@ def experiment_generator(*,
         n_trials = len(frequency_mat)
         experiment = experiment.reshape((n_io, n_trials, trial_duration))
     return experiment
+
 
 # TODO: many of the inputs can't be zero or negative.
 # TODO: refactoring.
