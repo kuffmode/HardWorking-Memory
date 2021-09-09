@@ -2,9 +2,13 @@ import numpy as np
 from typing import Callable, Dict, Optional, Tuple, Union, Any, List
 
 
+def fix_random_seed(seed: int = 2021):
+    np.random.seed(seed)
+
+
 def make_sin(*,
-             frequency: int = 10,
-             event_duration: int = 500) -> np.ndarray:
+             frequency: int,
+             event_duration: int) -> np.ndarray:
     """
     Create a sin wave with the given parameters such that there will be "f" peaks during "t" timepoints.
     So if f is weirdly large (like more than 1 peak per "t") then the signal won't be sinusoidal anymore.
@@ -26,39 +30,62 @@ def make_sin(*,
     return np.sin(2 * np.pi * frequency * np.arange(event_duration) / event_duration)
 
 
-def make_sin_stimulus(*,
-                      frequencies: List,
-                      event_duration: int = 500) -> np.ndarray:
+def make_step(*,
+              frequency: int,
+              event_duration: int) -> np.ndarray:
     """
-    Generates a vector of sinusoidal events given the frequencies by looping through them.
-    So the order of events will be the same as the elements in the list.
-    Note: it uses the "make_sin" function.
+    Create a flat line with length of event_duration. By itself it's not impressive but give it to the make_stimulus
+    and you'll get a step function.
 
     Args:
+        frequency (int):
+            Well, amplitude is a more accurate term here, I know.
+
+        event_duration (int):
+            Number of time points.
+
+    Returns (np.ndarray):
+        A flat line with amplitude "frequency" and length "event_duration".
+    """
+    return np.full(event_duration, frequency)
+
+
+def make_stimulus(*,
+                  function: Callable = make_sin,
+                  function_kw: Optional[Dict],
+                  frequencies: List) -> np.ndarray:
+    """
+    Generates a vector of events given the frequencies by looping through them.
+    So the order of events will be the same as the elements in the list.
+    Note: it makes one stimulus, can be used for making source or target or both.
+
+    Args:
+        function:
+            The function to make events with, default is make_sin so the stimulus is sinusoidal.
+
+        function_kw:
+            Keyword Args for the function, if it needs any.
+
         frequencies (List):
             Just as "make_sin", keep the duration in mind. If the ratio is off (like more than one peak per sample)
             then the signal will be trash instead of sinusoidal! So max(frequency) < event_duration/10
 
-        event_duration (int):
-            Number of samples per frequency.
-            So the time series will have (len(frequencies) * event_duration) samples.
-
     Returns (np.ndarray):
-        The first stimulus (reference stimulus) that can be then transformed
-        or directly recalled as the target stimulus.
+        One stimulus that can be stacked with others to form a trial.
 
     TODO: enforce the frequency/duration ratio
     """
     stimulus = []
+    function_kw = function_kw if function_kw else {}
     for frequency in frequencies:
-        stimulus.extend(make_sin(frequency=frequency, event_duration=event_duration))
+        stimulus.extend(function(frequency=frequency, **function_kw))
     return np.array(stimulus)
 
 
 def template_generator(*,
                        n_trials: int = 10,
                        n_events: int = 3,
-                       frequency_range: Tuple[int, int, int] = (2, 20, 3),
+                       frequency_range: Tuple[int, int, int],
                        transformation: Optional[Callable] = None,
                        transformation_kw: Optional[Dict] = None,
                        retrograde=True) -> np.ndarray:
@@ -266,14 +293,12 @@ def experiment_generator(*,
 
         trials.append(trial_generator(**trial_generator_kw))
 
-
-
     # from a list of lists to a numpy array.
     for trial in trials:
         signals.extend(trial[0])
         cues.extend(trial[1])  # TODO: what if there's no cue
         responses.extend(trial[1]) if is_match else responses.extend(trial[1] * -1)
-        wm_cue.extend(trial[1][::-1]) if is_wm else wm_cue.extend(trial[1][::-1]*-1)
+        wm_cue.extend(trial[1][::-1]) if is_wm else wm_cue.extend(trial[1][::-1] * -1)
     experiment = np.array((signals, cues, responses, wm_cue))
 
     if is_3d:
@@ -283,7 +308,7 @@ def experiment_generator(*,
         experiment = experiment.reshape((n_io, n_trials, trial_duration))
     return experiment
 
-
 # TODO: many of the inputs can't be zero or negative.
 # TODO: refactoring.
 # TODO: testing.
+# TODO: Random states are not controlled
