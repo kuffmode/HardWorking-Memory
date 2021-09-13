@@ -3,6 +3,7 @@ from typeguard import typechecked
 from typing import Callable, Dict, Optional, Tuple, Union, Any, List
 from utils import normalize_step_signal
 
+
 @typechecked
 def fix_random_seed(seed: int = 2021):
     np.random.seed(seed)
@@ -109,7 +110,7 @@ def template_generator(*,
             desired number of events per stimulus. the more events, the harder the task.
         frequency_range (Tuple[int, int, int]):
             desired range of frequencies: (smallest, largest, step). Make sure:
-                1. the largest value is smaller than the duration of each event (see make_sin_stimulus).
+                1. the largest value is smaller than the duration of each event (see make_stimulus).
                 2. the step size makes sense with respect to the number of events. if you need 5 events within the
                     range of 1 to 10 Hz then a step size of 5 doesn't make sense.
 
@@ -334,6 +335,65 @@ def hwm_interface(*,
                   transformation_kw: Optional[Dict],
                   function_kw: Optional[Dict],
                   random_seed: Optional[int]) -> np.ndarray:
+    """
+    Calls other functions internally to produce a block of trials. Should make the conventional uses easier.
+
+    Args:
+        frequency_range (Tuple[int, int, int]):
+            range of frequencies (amplitudes in case of make_step). should be(min, max, step).
+            if you're not using make_step then make sure the values
+            make sense with respect to event's duration and number of events per trial. (see template_generator)
+
+        event_function (Callable):
+             a function to make individual events with. make_sin and make_step are two built-in functions to use.
+
+        transformation (Callable):
+            a function to transform the target signal, if needed. scale_one_off is the built-in function.
+
+        n_trials (int):
+            number of trials in the block.
+
+        t_silence (int):
+            duration of silence between source and target stimuli.
+
+        t_response (int):
+            duration in which the agent should provide a respond. if 1 then the task has a many-to-one structure.
+
+        global_noise (float):
+            a random number drawn from a Gaussian distribution with mean zero
+            and SD of global_noise will be added to each time point of the input signal.
+
+        is_retrograde (bool):
+            if True, flips the target signal in time. for example (1,2,3,0,3,2,1)
+
+        is_wm (bool):
+            if True the condition cue signal will be 1.
+            For the times you want to train both conditions so the network knows which condition this one is.
+
+        is_match (bool):
+            produces the "match" response to the task. Make sure the task is actually a match task.
+            for example:
+                recall shouldn't have any transformations or retrograde in the match condition.
+                match condition for the working memory condition is retrograde.
+                you can define your own rules though, for example a working memory match scenario can also be when
+                the target is not retrograde but the n_th event is a scaled version of the same event in source.
+
+        is_3d (bool):
+            if True, the output will be a block with shape (n_signals, n_trials, trial_duration). I found it easier
+            to shuffle trials this way but if False then there will be a long 2d signal with all trials concatenated.
+
+        transformation_kw (Optional[Dict]):
+            kwargs for the transformation function, if needed.
+
+        function_kw (Optional[Dict]):
+            kwargs for the event generator function, if needed.
+
+        random_seed (int):
+            sets numpy.random.seed(). I heard it's not the best way to do it so take care here.
+
+    Returns:
+        a block of experiment with the same condition (match/nomatch).
+    """
     transformation_kw = transformation_kw if transformation_kw else {}
     function_kw = function_kw if function_kw else {}
     np.random.seed(random_seed) if random_seed else np.random.seed(None)
@@ -374,6 +434,7 @@ def hwm_interface(*,
         block = normalize_step_signal(block, frequency_range[1])
 
     return block
+
 # TODO: many of the inputs can't be zero or negative.
 # TODO: refactoring.
 # TODO: testing.
