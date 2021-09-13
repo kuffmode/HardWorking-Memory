@@ -1,11 +1,14 @@
 import numpy as np
+from typeguard import typechecked
 from typing import Callable, Dict, Optional, Tuple, Union, Any, List
+from utils import normalize_step_signal
 
-
+@typechecked
 def fix_random_seed(seed: int = 2021):
     np.random.seed(seed)
 
 
+@typechecked
 def make_sin(*,
              frequency: int,
              event_duration: int) -> np.ndarray:
@@ -30,6 +33,7 @@ def make_sin(*,
     return np.sin(2 * np.pi * frequency * np.arange(event_duration) / event_duration)
 
 
+@typechecked
 def make_step(*,
               frequency: int,
               event_duration: int) -> np.ndarray:
@@ -50,6 +54,7 @@ def make_step(*,
     return np.full(event_duration, frequency)
 
 
+@typechecked
 def make_stimulus(*,
                   function: Callable = make_sin,
                   function_kw: Optional[Dict],
@@ -78,10 +83,11 @@ def make_stimulus(*,
     stimulus = []
     function_kw = function_kw if function_kw else {}
     for frequency in frequencies:
-        stimulus.extend(function(frequency=frequency, **function_kw))
+        stimulus.extend(function(frequency=int(frequency), **function_kw))
     return np.array(stimulus)
 
 
+@typechecked
 def template_generator(*,
                        n_trials: int = 10,
                        n_events: int = 3,
@@ -139,9 +145,10 @@ def template_generator(*,
 
         one_trial = np.array([*reference, 0, *target])
         template.extend(one_trial)
-    return np.array(template).reshape(n_trials, (n_events * 2 + 1))
+    return np.array(template).astype('int').reshape(n_trials, (n_events * 2 + 1))
 
 
+@typechecked
 def scale_one_off(stimulus: np.ndarray, *,
                   frequency_range: Tuple[int, int, int]) -> np.ndarray:
     """
@@ -172,6 +179,7 @@ def scale_one_off(stimulus: np.ndarray, *,
             return target
 
 
+@typechecked
 def trial_generator(*,
                     source_generator: Callable,
                     target_generator: Callable,
@@ -233,6 +241,7 @@ def trial_generator(*,
     return signal, cue_signal
 
 
+@typechecked
 def experiment_generator(*,
                          frequency_mat: np.ndarray,
                          trial_generator: Callable,
@@ -286,10 +295,10 @@ def experiment_generator(*,
         # the trial generator kws.
 
         if "frequencies" in trial_generator_kw["source_generator_kw"]:
-            trial_generator_kw["source_generator_kw"]["frequencies"] = f_list[:int(np.where(f_list == 0)[0])]
+            trial_generator_kw["source_generator_kw"]["frequencies"] = list(f_list[:int(np.where(f_list == 0)[0])])
 
         if "frequencies" in trial_generator_kw["target_generator_kw"]:
-            trial_generator_kw["target_generator_kw"]["frequencies"] = f_list[int(np.where(f_list == 0)[0]) + 1:]
+            trial_generator_kw["target_generator_kw"]["frequencies"] = list(f_list[int(np.where(f_list == 0)[0]) + 1:])
 
         trials.append(trial_generator(**trial_generator_kw))
 
@@ -308,7 +317,65 @@ def experiment_generator(*,
         experiment = experiment.reshape((n_io, n_trials, trial_duration))
     return experiment
 
+
+@typechecked
+def hwm_interface(*,
+                  frequency_range: Tuple[int, int, int] = (2, 20, 1),
+                  event_function: Callable = make_step,
+                  transformation: Callable = None,
+                  n_trials: int = 100,
+                  t_silence: int = 100,
+                  t_response: int = 100,
+                  global_noise: float = .0,
+                  is_retrograde: bool = False,
+                  is_wm: bool = False,
+                  is_match: bool = True,
+                  is_3d: bool = True,
+                  transformation_kw: Optional[Dict],
+                  function_kw: Optional[Dict],
+                  random_seed: Optional[int]) -> np.ndarray:
+    transformation_kw = transformation_kw if transformation_kw else {}
+    function_kw = function_kw if function_kw else {}
+    np.random.seed(random_seed) if random_seed else np.random.seed(None)
+
+    source_generator_kw = {"function": event_function,
+                           "function_kw": function_kw,
+                           "frequencies": None}
+    target_generator_kw = source_generator_kw.copy()
+
+    trial_kw = {"source_generator": make_stimulus,
+                "source_generator_kw": source_generator_kw,
+                "target_generator": make_stimulus,
+                "target_generator_kw": target_generator_kw,
+                "t_response": t_response,
+                "t_silence": t_silence,
+                "global_noise": global_noise}
+
+    if is_match:
+        template = template_generator(n_trials=n_trials,
+                                      transformation=None,
+                                      frequency_range=frequency_range,
+                                      retrograde=is_retrograde)
+    else:
+        template = template_generator(n_trials=n_trials,
+                                      transformation=transformation,
+                                      frequency_range=frequency_range,
+                                      transformation_kw=transformation_kw,
+                                      retrograde=is_retrograde)
+
+    block = experiment_generator(frequency_mat=template,
+                                 trial_generator=trial_generator,
+                                 trial_generator_kw=trial_kw,
+                                 is_wm=is_wm,
+                                 is_match=is_match,
+                                 is_3d=is_3d)
+
+    if source_generator_kw["function"] is make_step:
+        block = normalize_step_signal(block, frequency_range[1])
+
+    return block
 # TODO: many of the inputs can't be zero or negative.
 # TODO: refactoring.
 # TODO: testing.
-# TODO: Random states are not controlled
+# TODO: Not sure if np.seed is a good way to take care of randomness
+# TODO: Changing all "frequencies" to just events?

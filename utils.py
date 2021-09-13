@@ -2,11 +2,14 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from typing import Optional, Dict, Tuple, Any
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 
 
 def stylize():
-    plt.rcParams['font.family'] = 'sans-serif'
-    plt.rcParams['font.sans-serif'] = 'GothamSSm'  # Will skip if you don't have Gotham typeface family
+    mpl.rcParams['font.family'] = 'sans-serif'
+    mpl.rcParams['font.sans-serif'] = 'GothamSSm'  # Will skip if you don't have Gotham typeface family
+    mpl.rcParams['pdf.fonttype'] = 42
+    mpl.rcParams['font.size'] = 14
 
 
 def train_test_preprocessor(*,
@@ -132,8 +135,8 @@ def simplified_trial_plotter(frequency_list: np.ndarray, *,
         axs[0].hlines(y=value, xmin=xmins[index], xmax=xmaxes[index], linewidth=10, color='k')
 
     # plotting divider lines
-    axs[0].axvline(silence_index * t_events, color='#F53A61')
-    axs[0].axvline(silence_index * t_events + t_delay, color='#F53A61')
+    axs[0].axvline(silence_index * t_events, color='#0729F5')
+    axs[0].axvline(silence_index * t_events + t_delay, color='#0729F5')
     axs[0].axvline(xmaxes[-1], color='#F53A61')
 
     # grid and axes for the upper plot
@@ -173,5 +176,5 @@ def normalize_step_signal(signals: np.ndarray, max_value: int) -> np.ndarray:
         Normalized (between 0 and 1) step signals.
     """
     for index, signal in enumerate(signals[0]):
-        signals[0][index] = signal/max_value
+        signals[0][index] = signal / max_value
     return signals
