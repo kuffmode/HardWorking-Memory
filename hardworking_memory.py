@@ -1,10 +1,18 @@
 import numpy as np
+from typeguard import typechecked
 from typing import Callable, Dict, Optional, Tuple, Union, Any, List
+from utils import normalize_step_signal
 
 
+@typechecked
+def fix_random_seed(seed: int = 2021):
+    np.random.seed(seed)
+
+
+@typechecked
 def make_sin(*,
-             frequency: int = 10,
-             event_duration: int = 500) -> np.ndarray:
+             frequency: int,
+             event_duration: int) -> np.ndarray:
     """
     Create a sin wave with the given parameters such that there will be "f" peaks during "t" timepoints.
     So if f is weirdly large (like more than 1 peak per "t") then the signal won't be sinusoidal anymore.
@@ -26,39 +34,65 @@ def make_sin(*,
     return np.sin(2 * np.pi * frequency * np.arange(event_duration) / event_duration)
 
 
-def make_sin_stimulus(*,
-                      frequencies: List,
-                      event_duration: int = 500) -> np.ndarray:
+@typechecked
+def make_step(*,
+              frequency: int,
+              event_duration: int) -> np.ndarray:
     """
-    Generates a vector of sinusoidal events given the frequencies by looping through them.
-    So the order of events will be the same as the elements in the list.
-    Note: it uses the "make_sin" function.
+    Create a flat line with length of event_duration. By itself it's not impressive but give it to the make_stimulus
+    and you'll get a step function.
 
     Args:
+        frequency (int):
+            Well, amplitude is a more accurate term here, I know.
+
+        event_duration (int):
+            Number of time points.
+
+    Returns (np.ndarray):
+        A flat line with amplitude "frequency" and length "event_duration".
+    """
+    return np.full(event_duration, frequency)
+
+
+@typechecked
+def make_stimulus(*,
+                  function: Callable = make_sin,
+                  function_kw: Optional[Dict],
+                  frequencies: List) -> np.ndarray:
+    """
+    Generates a vector of events given the frequencies by looping through them.
+    So the order of events will be the same as the elements in the list.
+    Note: it makes one stimulus, can be used for making source or target or both.
+
+    Args:
+        function:
+            The function to make events with, default is make_sin so the stimulus is sinusoidal.
+
+        function_kw:
+            Keyword Args for the function, if it needs any.
+
         frequencies (List):
             Just as "make_sin", keep the duration in mind. If the ratio is off (like more than one peak per sample)
             then the signal will be trash instead of sinusoidal! So max(frequency) < event_duration/10
 
-        event_duration (int):
-            Number of samples per frequency.
-            So the time series will have (len(frequencies) * event_duration) samples.
-
     Returns (np.ndarray):
-        The first stimulus (reference stimulus) that can be then transformed
-        or directly recalled as the target stimulus.
+        One stimulus that can be stacked with others to form a trial.
 
     TODO: enforce the frequency/duration ratio
     """
     stimulus = []
+    function_kw = function_kw if function_kw else {}
     for frequency in frequencies:
-        stimulus.extend(make_sin(frequency=frequency, event_duration=event_duration))
+        stimulus.extend(function(frequency=int(frequency), **function_kw))
     return np.array(stimulus)
 
 
+@typechecked
 def template_generator(*,
                        n_trials: int = 10,
-                       n_events: int = 3,
-                       frequency_range: Tuple[int, int, int] = (2, 20, 3),
+                       n_events: int,
+                       frequency_range: Tuple[int, int, int],
                        transformation: Optional[Callable] = None,
                        transformation_kw: Optional[Dict] = None,
                        retrograde=True) -> np.ndarray:
@@ -76,7 +110,7 @@ def template_generator(*,
             desired number of events per stimulus. the more events, the harder the task.
         frequency_range (Tuple[int, int, int]):
             desired range of frequencies: (smallest, largest, step). Make sure:
-                1. the largest value is smaller than the duration of each event (see make_sin_stimulus).
+                1. the largest value is smaller than the duration of each event (see make_stimulus).
                 2. the step size makes sense with respect to the number of events. if you need 5 events within the
                     range of 1 to 10 Hz then a step size of 5 doesn't make sense.
 
@@ -112,9 +146,10 @@ def template_generator(*,
 
         one_trial = np.array([*reference, 0, *target])
         template.extend(one_trial)
-    return np.array(template).reshape(n_trials, (n_events * 2 + 1))
+    return np.array(template).astype('int').reshape(n_trials, (n_events * 2 + 1))
 
 
+@typechecked
 def scale_one_off(stimulus: np.ndarray, *,
                   frequency_range: Tuple[int, int, int]) -> np.ndarray:
     """
@@ -145,12 +180,13 @@ def scale_one_off(stimulus: np.ndarray, *,
             return target
 
 
+@typechecked
 def trial_generator(*,
                     source_generator: Callable,
                     target_generator: Callable,
-                    t_silence: int = 100,
-                    t_response: int = 200,
-                    global_noise: float = .01,
+                    t_silence: int,
+                    t_response: int,
+                    global_noise: float = .0,
                     source_generator_kw: Optional[Dict],
                     target_generator_kw: Optional[Dict]) -> Tuple[Union[np.ndarray, Any], np.ndarray]:
     """
@@ -206,6 +242,7 @@ def trial_generator(*,
     return signal, cue_signal
 
 
+@typechecked
 def experiment_generator(*,
                          frequency_mat: np.ndarray,
                          trial_generator: Callable,
@@ -259,21 +296,19 @@ def experiment_generator(*,
         # the trial generator kws.
 
         if "frequencies" in trial_generator_kw["source_generator_kw"]:
-            trial_generator_kw["source_generator_kw"]["frequencies"] = f_list[:int(np.where(f_list == 0)[0])]
+            trial_generator_kw["source_generator_kw"]["frequencies"] = list(f_list[:int(np.where(f_list == 0)[0])])
 
         if "frequencies" in trial_generator_kw["target_generator_kw"]:
-            trial_generator_kw["target_generator_kw"]["frequencies"] = f_list[int(np.where(f_list == 0)[0]) + 1:]
+            trial_generator_kw["target_generator_kw"]["frequencies"] = list(f_list[int(np.where(f_list == 0)[0]) + 1:])
 
         trials.append(trial_generator(**trial_generator_kw))
-
-
 
     # from a list of lists to a numpy array.
     for trial in trials:
         signals.extend(trial[0])
         cues.extend(trial[1])  # TODO: what if there's no cue
         responses.extend(trial[1]) if is_match else responses.extend(trial[1] * -1)
-        wm_cue.extend(trial[1][::-1]) if is_wm else wm_cue.extend(trial[1][::-1]*-1)
+        wm_cue.extend(trial[1][::-1]) if is_wm else wm_cue.extend(trial[1][::-1] * -1)
     experiment = np.array((signals, cues, responses, wm_cue))
 
     if is_3d:
@@ -284,6 +319,129 @@ def experiment_generator(*,
     return experiment
 
 
+@typechecked
+def hwm_interface(*,
+                  n_events: int = 3,
+                  frequency_range: Tuple[int, int, int] = (2, 20, 1),
+                  event_function: Callable = make_step,
+                  transformation: Callable = None,
+                  n_trials: int = 100,
+                  t_silence: int = 100,
+                  t_response: int = 100,
+                  global_noise: float = .0,
+                  is_retrograde: bool = False,
+                  is_wm: bool = False,
+                  is_match: bool = True,
+                  is_3d: bool = True,
+                  transformation_kw: Optional[Dict],
+                  function_kw: Optional[Dict],
+                  random_seed: Optional[int]) -> np.ndarray:
+    """
+    Calls other functions internally to produce a block of trials. Should make the conventional uses easier.
+
+    Args:
+        n_events (int):
+            number of events per stimulus. The more events the harder the task will be.
+
+        frequency_range (Tuple[int, int, int]):
+            range of frequencies (amplitudes in case of make_step). should be(min, max, step).
+            if you're not using make_step then make sure the values
+            make sense with respect to event's duration and number of events per trial. (see template_generator)
+
+        event_function (Callable):
+             a function to make individual events with. make_sin and make_step are two built-in functions to use.
+
+        transformation (Callable):
+            a function to transform the target signal, if needed. scale_one_off is the built-in function.
+
+        n_trials (int):
+            number of trials in the block.
+
+        t_silence (int):
+            duration of silence between source and target stimuli.
+
+        t_response (int):
+            duration in which the agent should provide a respond. if 1 then the task has a many-to-one structure.
+
+        global_noise (float):
+            a random number drawn from a Gaussian distribution with mean zero
+            and SD of global_noise will be added to each time point of the input signal.
+
+        is_retrograde (bool):
+            if True, flips the target signal in time. for example (1,2,3,0,3,2,1)
+
+        is_wm (bool):
+            if True the condition cue signal will be 1.
+            For the times you want to train both conditions so the network knows which condition this one is.
+
+        is_match (bool):
+            produces the "match" response to the task. Make sure the task is actually a match task.
+            for example:
+                recall shouldn't have any transformations or retrograde in the match condition.
+                match condition for the working memory condition is retrograde.
+                you can define your own rules though, for example a working memory match scenario can also be when
+                the target is not retrograde but the n_th event is a scaled version of the same event in source.
+
+        is_3d (bool):
+            if True, the output will be a block with shape (n_signals, n_trials, trial_duration). I found it easier
+            to shuffle trials this way but if False then there will be a long 2d signal with all trials concatenated.
+
+        transformation_kw (Optional[Dict]):
+            kwargs for the transformation function, if needed.
+
+        function_kw (Optional[Dict]):
+            kwargs for the event generator function, if needed.
+
+        random_seed (int):
+            sets numpy.random.seed(). I heard it's not the best way to do it so take care here.
+
+    Returns:
+        a block of experiment with the same condition (match/nomatch).
+    """
+    transformation_kw = transformation_kw if transformation_kw else {}
+    function_kw = function_kw if function_kw else {}
+    np.random.seed(random_seed) if random_seed else np.random.seed(None)
+
+    source_generator_kw = {"function": event_function,
+                           "function_kw": function_kw,
+                           "frequencies": None}
+    target_generator_kw = source_generator_kw.copy()
+
+    trial_kw = {"source_generator": make_stimulus,
+                "source_generator_kw": source_generator_kw,
+                "target_generator": make_stimulus,
+                "target_generator_kw": target_generator_kw,
+                "t_response": t_response,
+                "t_silence": t_silence,
+                "global_noise": global_noise}
+
+    if is_match:
+        template = template_generator(n_trials=n_trials,
+                                      transformation=None,
+                                      frequency_range=frequency_range,
+                                      retrograde=is_retrograde)
+    else:
+        template = template_generator(n_trials=n_trials,
+                                      n_events=n_events,
+                                      transformation=transformation,
+                                      frequency_range=frequency_range,
+                                      transformation_kw=transformation_kw,
+                                      retrograde=is_retrograde)
+
+    block = experiment_generator(frequency_mat=template,
+                                 trial_generator=trial_generator,
+                                 trial_generator_kw=trial_kw,
+                                 is_wm=is_wm,
+                                 is_match=is_match,
+                                 is_3d=is_3d)
+
+    if source_generator_kw["function"] is make_step:
+        block = normalize_step_signal(block, frequency_range[1])
+
+    return block
+
 # TODO: many of the inputs can't be zero or negative.
 # TODO: refactoring.
 # TODO: testing.
+# TODO: Not sure if np.seed is a good way to take care of randomness
+# TODO: Changing all "frequencies" to just events?
