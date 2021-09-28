@@ -91,7 +91,7 @@ def make_stimulus(*,
 @typechecked
 def template_generator(*,
                        n_trials: int = 10,
-                       n_events: int = 3,
+                       n_events: int,
                        frequency_range: Tuple[int, int, int],
                        transformation: Optional[Callable] = None,
                        transformation_kw: Optional[Dict] = None,
@@ -184,9 +184,9 @@ def scale_one_off(stimulus: np.ndarray, *,
 def trial_generator(*,
                     source_generator: Callable,
                     target_generator: Callable,
-                    t_silence: int = 100,
-                    t_response: int = 200,
-                    global_noise: float = .01,
+                    t_silence: int,
+                    t_response: int,
+                    global_noise: float = .0,
                     source_generator_kw: Optional[Dict],
                     target_generator_kw: Optional[Dict]) -> Tuple[Union[np.ndarray, Any], np.ndarray]:
     """
@@ -321,6 +321,7 @@ def experiment_generator(*,
 
 @typechecked
 def hwm_interface(*,
+                  n_events: int = 3,
                   frequency_range: Tuple[int, int, int] = (2, 20, 1),
                   event_function: Callable = make_step,
                   transformation: Callable = None,
@@ -339,6 +340,9 @@ def hwm_interface(*,
     Calls other functions internally to produce a block of trials. Should make the conventional uses easier.
 
     Args:
+        n_events (int):
+            number of events per stimulus. The more events the harder the task will be.
+
         frequency_range (Tuple[int, int, int]):
             range of frequencies (amplitudes in case of make_step). should be(min, max, step).
             if you're not using make_step then make sure the values
@@ -418,6 +422,7 @@ def hwm_interface(*,
                                       retrograde=is_retrograde)
     else:
         template = template_generator(n_trials=n_trials,
+                                      n_events=n_events,
                                       transformation=transformation,
                                       frequency_range=frequency_range,
                                       transformation_kw=transformation_kw,
