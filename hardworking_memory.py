@@ -27,10 +27,12 @@ def make_sin(*,
     Returns (np.ndarray):
         A sinusoidal time series with length t.
 
-    TODO: Error handling and exceptions.
-    TODO: Check for the f/t ratio.
 
     """
+    if frequency > (event_duration/10):
+        raise ValueError("The frequency is too high. should be something like f <= t/10")
+    elif frequency < 0:
+        raise ValueError("Did you just pass a negative frequency?")
     return np.sin(2 * np.pi * frequency * np.arange(event_duration) / event_duration)
 
 
@@ -52,12 +54,14 @@ def make_step(*,
     Returns (np.ndarray):
         A flat line with amplitude "frequency" and length "event_duration".
     """
+    if event_duration < 0:
+        raise ValueError("Obviously, duration can't be negative.")
     return np.full(event_duration, frequency)
 
 
 @typechecked
 def make_stimulus(*,
-                  function: Callable = make_sin,
+                  function: Callable,
                   function_kw: Optional[Dict],
                   frequencies: List) -> np.ndarray:
     """
@@ -66,20 +70,20 @@ def make_stimulus(*,
     Note: it makes one stimulus, can be used for making source or target or both.
 
     Args:
-        function:
+        function (Callable):
             The function to make events with, default is make_sin so the stimulus is sinusoidal.
 
-        function_kw:
+        function_kw (Optional[Dict]):
             Keyword Args for the function, if it needs any.
 
         frequencies (List):
             Just as "make_sin", keep the duration in mind. If the ratio is off (like more than one peak per sample)
-            then the signal will be trash instead of sinusoidal! So max(frequency) < event_duration/10
+            then the signal will be trash instead of sinusoidal! So max(frequency) < event_duration/10.
+            Unless you're using the "make_step" though, or something independent of "frequencies".
 
     Returns (np.ndarray):
         One stimulus that can be stacked with others to form a trial.
 
-    TODO: enforce the frequency/duration ratio
     """
     stimulus = []
     function_kw = function_kw if function_kw else {}
@@ -95,7 +99,7 @@ def template_generator(*,
                        frequency_range: Tuple[int, int, int],
                        transformation: Optional[Callable] = None,
                        transformation_kw: Optional[Dict] = None,
-                       retrograde=True) -> np.ndarray:
+                       retrograde: bool) -> np.ndarray:
     """
     Makes templates to be fed into the trial_generator later. Each row of the template matrix contains information
     of one trial as [frequencies of the source stimulus, 0, frequencies of the target stimulus]. The zero in between
@@ -108,6 +112,7 @@ def template_generator(*,
 
         n_events (int):
             desired number of events per stimulus. the more events, the harder the task.
+
         frequency_range (Tuple[int, int, int]):
             desired range of frequencies: (smallest, largest, step). Make sure:
                 1. the largest value is smaller than the duration of each event (see make_stimulus).
@@ -115,8 +120,8 @@ def template_generator(*,
                     range of 1 to 10 Hz then a step size of 5 doesn't make sense.
 
         transformation (Optional[Callable]):
-            A transformation function that works with a list of integers. Can also be a lambda function, why not.
-            Use for the working memory condition and not recall.
+            A transformation function that works with a list of integers.
+            Can also be a lambda function, why not, go wild.
 
         transformation_kw (Optional[Dict]):
             Arguments for the transformation function, if needed.
@@ -124,12 +129,16 @@ def template_generator(*,
         retrograde (bool):
             If True, the target signal will be reversed in time, this by itself is a transformation but can be
             applied to already transformed signals so this step comes after transformation.
-            Use for the working memory condition and not recall.
+            Use for the working memory condition and not recall, unless you want the target to be nomatch,
+            still I'd say don't use this transformation if your network needs to learn a wm task with retrograde too.
 
     Returns:
         The frequency matrix
 
     """
+    if frequency_range[2] > frequency_range[1]:
+        raise ValueError("step size can't be larger than the maximum value.")
+
     transformation_kw = transformation_kw if transformation_kw else {}
 
     template = []
@@ -171,6 +180,9 @@ def scale_one_off(stimulus: np.ndarray, *,
         a vector of frequencies to generate the target signal with.
 
     """
+    if frequency_range[2] > frequency_range[1]:
+        raise ValueError("step size can't be larger than the maximum value.")
+
     alter_indx = np.random.randint(len(stimulus), size=1)
     target = stimulus.copy()
 
@@ -221,6 +233,9 @@ def trial_generator(*,
     Returns:
         two vectors, one the signal and the other the cue.
     """
+    if t_silence < 0 or t_response < 0:
+        raise ValueError("duration of silence or response can't be negative.")
+
     source_generator_kw = source_generator_kw if source_generator_kw else {}
     target_generator_kw = target_generator_kw if target_generator_kw else {}
 
@@ -247,8 +262,8 @@ def experiment_generator(*,
                          frequency_mat: np.ndarray,
                          trial_generator: Callable,
                          trial_generator_kw: Optional[Dict],
-                         is_wm: bool = False,
-                         is_match: bool = True,
+                         is_wm: bool,
+                         is_match: bool,
                          is_3d: bool = True):
     """
     Generates one block of trials and their correct labels using a trial_generator function and a frequency template.
@@ -273,7 +288,7 @@ def experiment_generator(*,
 
         is_match (bool):
             Creates a match response. Make sure it is indeed a match experiment!
-            # TODO: enforce matching/no_matching issue.
+            # TODO: not sure how but enforce matching/no_matching issue.
 
         is_3d (bool):
             Reshapes the output to (n_signals, n_trials, trial_duration) for easier inspection/plotting.
@@ -284,6 +299,7 @@ def experiment_generator(*,
         One block of experiment.
 
     """
+
     trial_generator_kw = trial_generator_kw if trial_generator_kw else {}
     trials = []
     signals = []
@@ -306,7 +322,7 @@ def experiment_generator(*,
     # from a list of lists to a numpy array.
     for trial in trials:
         signals.extend(trial[0])
-        cues.extend(trial[1])  # TODO: what if there's no cue
+        cues.extend(trial[1])
         responses.extend(trial[1]) if is_match else responses.extend(trial[1] * -1)
         wm_cue.extend(trial[1][::-1]) if is_wm else wm_cue.extend(trial[1][::-1] * -1)
     experiment = np.array((signals, cues, responses, wm_cue))
@@ -440,7 +456,6 @@ def hwm_interface(*,
 
     return block
 
-# TODO: many of the inputs can't be zero or negative.
 # TODO: refactoring.
 # TODO: testing.
 # TODO: Not sure if np.seed is a good way to take care of randomness

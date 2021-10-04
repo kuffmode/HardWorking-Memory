@@ -9,7 +9,7 @@ def stylize():
     mpl.rcParams['font.family'] = 'sans-serif'
     mpl.rcParams['font.sans-serif'] = 'GothamSSm'  # Will skip if you don't have Gotham typeface family
     mpl.rcParams['pdf.fonttype'] = 42
-    mpl.rcParams['font.size'] = 14
+    mpl.rcParams['font.size'] = 11
 
 
 def train_test_preprocessor(*,
