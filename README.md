@@ -1,4 +1,4 @@
-![really, just the logo](figs/hwm_logo.jpg "logo")
+<img align="left" src="figs/hwm_logo.jpg" alt="hwm logo" width="500"> 
 
 **TLDR**: It's a unified working &amp; short-term memory task for artificial neural networks.
 
@@ -16,7 +16,8 @@ The task is composed of two sets of events, source and target, separated by a pe
 If the task condition is "recall" then the task is a short-term memory that means the network should decide if the target stimulus is the same as the source. This by itself, I found to be a non-trivial task, because the source should stay in memory during the silence period and then be compared with the target after the presentation of both stimuli. The longer the silence, the harder the task will become.
 The actual "hard" task, however, is the working-memory condition in which a transformation is applied to the target so the network should perform the transformation during the silence and check if the same transformation is applied to the target. In other words, the target should be the same as the source given a transformation. For example, one transformation I implemented from Foster and colleagues is called "retrograde" that reverses the order of events in time. 
 You can apply your own transformations, e.g., scaling events by a given factor.
-![task conditions and structure](figs/hwm_structure.jpg "task")
+
+<img align="center" src="figs/hwm_structure.jpg" alt="hwm structure" width="700"> 
 
 By default, the output contains the task signal, a cue signal to indicate when to respond, a condition cue in case the network is trained simultaneously on both conditions, and the correct response. I implemented two event types one is a sinusoidal and the other is a step function but you can define your own function and hopefully it works! Turned out the sinusoidal events are much harder than the step ones because you need a longer signal in the end. If you decrease the event length to 1 and use a step function then you're basically feeding individual digits and I guess that should be the easiest setup.
 
